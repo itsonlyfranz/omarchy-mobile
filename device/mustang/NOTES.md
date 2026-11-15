@@ -3,7 +3,7 @@
 
 Findings for the Pixel 10 Pro XL port (SoC laguna, Tensor G5), newest first. Tracking issue: [#18](https://github.com/derekross/omarchy-mobile/issues/18). Nothing here has booted or flashed anything of ours: stage 0 is read-only.
 
-The parts below are a fact dump. A fact that a tool printed is marked [V], with its source. Every inference, hypothesis and open question is kept out of them and collected in "Interpretation and open questions" near the end, as items I1 to I21; a fact that has one points to it. Anything about the Tensor G5 that is not marked [V] is unverified.
+The parts below are a fact dump. A fact that a tool printed is marked [V], with its source. Every inference, hypothesis and open question is kept out of them and collected in "Interpretation and open questions" near the end, as items I1 to I23; a fact that has one points to it. Anything about the Tensor G5 that is not marked [V] is unverified.
 
 **This phone is not running stock.** It runs GrapheneOS (build `CP3A.261005.005`) with a locked bootloader, and it is a dedicated test phone. So there are no stock captures of a live device. The notes separate three kinds of source, and a GrapheneOS reading is never presented as stock:
 
@@ -53,6 +53,20 @@ fastboot getvar <name>          # only the variables named in part 3; never getv
 | Device trees from `boot`, `vendor_boot`/`vendor_kernel_boot`, `dtbo` | Done from the factory image, no root | part 1 |
 | Do `init_boot` and `vendor_kernel_boot` exist; boot image header versions | Done: both exist, header version 4 | part 1 |
 | `ro.boot.hardware.platform`, `ro.soc.model`, `dtb_idx`, `dtbo_idx` | Done; `dtb_idx` is unset on this build | part 2 |
+
+## 2026-11-16: stage 0, part 6: how laguna describes clocks, power, interrupts and the GPU
+
+From the same factory image (`F/`, build `CP3A.261005.005`, SHA-256 as in part 1), the B0 base DTB merged with the MP `dtbo` entry as in part 5, plus the module names and metadata in the `vendor_kernel_boot` and `vendor_boot` ramdisks and in `vendor_dlkm`. No phone, nothing run. The method, the longer write-up and a draft comment for #18 are in [findings.md](findings.md). `gs201.dtsi` was fetched again on 2026-11-16 (2,032 lines).
+
+- **Clocks** [V]. Most are children of one `google,cpm-clk` node: 152 clocks, each with a `clock-id`, an `lpcm-id` and a `rates` list, reached through `google,mba-cpm-iface` (12 mailbox channels, 4-byte payload). Five `google,google-lcm` nodes are MMIO gate/mux/div blocks (`#clock-cells = <3>`), one `google,hsion-lpcm` has one cell, nine `*_pf_state_clk` nodes and the GPU's `google,lga-gpu-pf-state` form a third kind, and the rest are `fixed-clock`. Stock modules: `goog-mba-cpm-iface`, `clk-cpm` ("Google CPM Clock Driver"), `rst-cpm`, `dvfs_helper`, `google_cpufreq`. This answers I6: clocks are described, but by firmware ids rather than registers (I22).
+- **Power domains** [V]. `google,lga-power-controller` (`mboxes` to the same interface) has 41 domain children: subsystem wrappers with a `sswrp-id` and sub-domains with a `subdomain-id`, with flags such as `on-at-init`, `rpm-always-on`, `no-auto-resume` and `use-smc`. CPUs use `arm,psci-1.0` over SMC with idle domains.
+- **Interrupts** [V]. The GIC is `arm,gic-v3`, with 229 of its 231 specifiers having a fourth cell of 0; the two non-zero ones belong to the CPU PMU nodes and are phandles of `ppi-partitions` children (affinity of seven CPUs and of one). This answers I5. Behind the GIC are 116 `google,{level,pulse,wide-level}-gia` aggregators; 181 nodes use one as `interrupt-parent`. SPI numbers reach 953.
+- **Pin control** [V]. `google,lga-{aoc,cpm,gdmc,hsion,hsios,lsioe,lsion,lsios}-pinctrl` plus two small ones (`hsios-stby`, `dpu`), one stock module (`pinctrl.ko`, "Google LGA PINCTRL Driver"). Each pin controller is also an interrupt controller.
+- **GPU** [V]. `google,lga-gpu` + `img,gpu` at `0x34800000`, with its own `arm,smmu-v3`. The stock module is `pvrsrvkm.ko` ("Pixel PowerVR GPU Driver", alias `of:*Cgoogle,lga-gpu`), built from `private/google-modules/powervr/pvrsrvkm/generated/volcanic/*`; the firmware files in `vendor` are named `rgx.fw.signed.71.2.2448.1212` and `rgx.sh.71.2.2448.1212`; user space has Vulkan, GLES and OpenCL libraries named `*_powervr.so`. Its module metadata lists `trusty-ipc`, `slc_pt` and `dvfs_helper` among its dependencies. This answers I3's family question; I23 is what it means.
+- **Console** [V]. `serial0` is `/uart@db61000`, enabled, with an interrupt; `/chosen/bootargs` has `earlycon=uart8250,mmio32,0xdb62000 console=ttyS0,115200n8 google_8250.nr_uarts=4` (`0xdb62000` is that node's `reg`; every UART's node name is 0x1000 below its `reg`). `/uart@3a321000` (`serial2`) is also enabled. The stock UART module `google_8250_dw` lists both `goog,goog-dw-apb-uart` and `snps,dw-apb-uart` as aliases. This answers I4's console question.
+- **PMICs** [V]. On SPMI (`smartdv,spmi` at `0x53f1000`): the `max77779` family and the `max77759` type-C controller. Also `google,da9188mfd` (regulator, RTC, GPIO), a bit-banged SPMI controller for the modem's PMIC, and an `rt6160` on I2C. No node or module with an `s2mpg` name; `s2dos07x02-regulator` is in the module list.
+- **Other blocks** [V]. UFS `google,ufshc` (module `ufs`), USB `google,dwc3-lga` around a `snps,dwc3` plus `google,usb_phy-lga` (firmware blob in the `vendor_boot` ramdisk), two `google,lga-pcie`, seven `arm,smmu-v3`, `arm,pl330` and `google-gpdma`, the DesignWare `i2c`, `i3c` and `spi` engines at the same 22 base addresses as the UARTs.
+- **Boot arguments** [V]. `/chosen/bootargs` also has `kvm-arm.protected_modules=goog-mba-ctrl,pinctrl,power_controller,irq-gia-google,arm_smmu_v3_kvm`. `vendor_boot`'s own command line has `aoc_core.aoc_enable_gsa_boot=1`, `arm_smmu_v3_kvm.smc_s2=true`, `swiotlb=noforce` and `load_sequential=1` for the SPMI and `max77779` modules. Module counts: 203 loaded from `vendor_kernel_boot`, 376 from `vendor_boot` (16K), 117 from `vendor_dlkm`.
 
 ## 2026-10-30: stage 0, part 5: the live device tree's node names, without root
 
@@ -131,10 +145,10 @@ Everything here is a hypothesis or a gap, not a fact. Each item says what it res
 
 - **I1. CPU core names.** Five cores report part 0xd87, two 0xd80 and one 0xd82. Mapped through Arm's part list, that would be five Cortex-A725, two Cortex-A520 and one Cortex-X4. The mapping is from Arm's list, not from the phone; the live DT also names an `arm,cortex-x4-pmu` for the single large core, which agrees.
 - **I2. RAM.** `MemTotal` of about 15.4 GB suggests 16 GiB installed. Eight banks of 2 GiB would match, but the banks' sizes are not readable.
-- **I3. GPU.** `img,gpu` and `rgx` register names point at an Imagination GPU, which fits the maintainer's expectation on #18. The model is unknown, and so is whether mainline's driver for that family covers it.
-- **I4. UART.** `goog,goog-dw-apb-uart` names a Synopsys DesignWare APB UART, a block mainline has a driver for. Whether that driver binds to this string or a fallback is unknown. Which of `uart0` and `serial0` is the console is unknown.
-- **I5. GIC.** The fourth interrupt cell (`#interrupt-cells = <4>`) has an unknown meaning.
-- **I6. Clocks.** No clock-controller node was found under the usual names, so how clocks are described is unknown. It may be a different mechanism rather than a missing one.
+- **I3. GPU.** `img,gpu` and `rgx` register names point at an Imagination GPU, which fits the maintainer's expectation on #18. The model is unknown, and so is whether mainline's driver for that family covers it. Part 6 narrows the family to Imagination's Volcanic generation (I23).
+- **I4. UART.** `goog,goog-dw-apb-uart` names a Synopsys DesignWare APB UART, a block mainline has a driver for. Whether that driver binds to this string or a fallback is unknown. Which of `uart0` and `serial0` is the console: `serial0`, per part 6.
+- **I5. GIC.** The fourth interrupt cell is the PPI-partition phandle of the standard GICv3 binding (part 6); it is 0 except on the CPU PMU nodes.
+- **I6. Clocks.** No clock-controller node was found under the usual names, and part 6 finds why: most clocks are children of a firmware (`google,cpm-clk`) clock provider reached over a mailbox. Whether that mailbox protocol is documented in Google's GPL module source is I22.
 - **I7. gs101-named strings.** `google,gs101-gsa-v1` in the base tree, and four in the MP overlay. Whether the drivers behind them carry over from gs101 is unknown.
 - **I8. Other boards in the package.** Only mustang is identified. That `rango`, `deepspace`, `frankel` and `blazer` are the other Pixel 10 models is a guess; `deepspace` is also the bootloader family name.
 - **I9. The three `*.ec.bin` images** (`d3m2`, `proto11`, `evt`): purpose unknown.
@@ -150,6 +164,11 @@ Everything here is a hypothesis or a gap, not a fact. Each item says what it res
 - **I16. RAM bank sizes.** The bases of the eight banks are known from node names; the sizes need root.
 - **I17. The `gsa` rewrite.** Two `reserved-memory` nodes carry a fixed address in the factory tree and appear live without one. What the bootloader does there is unknown.
 - **I18. The framebuffer.** No `reserved-memory` child is named like one. It is probably described under `chosen`, which the shell user cannot list; its address and size still need root or another route.
+
+**Added by part 6 (still not verified)**
+
+- **I22. The CPM mailbox.** Clocks, resets, power domains, DVFS and one interrupt chip all depend on `goog-mba-cpm-iface`. The message format is unknown here; the stock modules' source, in Google's GPL tree, is where to read it. Nothing in this file shows it resembles another Tensor SoC's mailbox.
+- **I23. The GPU generation.** The driver's source path says `volcanic` and the firmware name carries 71.2.2448.1212. That Volcanic is the generation after Rogue is from general knowledge, not the image; whether mainline `drm/imagination` and Mesa's PowerVR driver cover it is not checked.
 
 **The phone's state**
 
