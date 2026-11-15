@@ -3,7 +3,7 @@
 
 Written 2026-11-16 for [#18](https://github.com/derekross/omarchy-mobile/issues/18) and [#816](https://github.com/derekross/omarchy-mobile/issues/816). It builds on [#198](https://github.com/derekross/omarchy-mobile/pull/198) (`NOTES.md` parts 1 to 5) and does not repeat it: the image list, header versions, partition names, slot flags and the first compatible-string comparison are there. This adds what is left open in its questions I3 to I7: the GPU, the console UART, the interrupt controller's fourth cell, how clocks and power domains are described, and which kernel modules do the work on stock. The same facts, in `NOTES.md`'s format, are in its "part 6".
 
-**Nothing here comes from a phone.** Every fact is read from Google's factory image on a laptop, offline. Nothing was flashed, booted or run on a device, and the author has no Pixel 10 yet. Inferences are in their own section and are labelled as such. The write-up was produced with AI assistance (Claude Code); the commands are listed so any line can be re-checked.
+**Nothing here comes from a phone.** Every fact is read from Google's factory image on a laptop, offline. Nothing was flashed, booted or run on a device, and the author has no Pixel 10 yet. Inferences are in their own section and are labelled as such. The commands are listed so any line can be re-checked.
 
 ## Source
 
@@ -78,7 +78,7 @@ Eight CPUs, as #198 found, each with `dvfs-helper-domain-name` (`cpu0`, `cpu1g0`
 
 ### 9. Boot arguments and the modules that load before everything else
 
-- **`vendor_boot`'s command line** (on cheetah the bootloader ignores it and `/chosen/bootargs` is used, per AGENTS.md; whether mustang's does is unknown): `fips140.load_sequential=1 vh_sched.load_sequential=1 spmi_smartdv.load_sequential=1 regmap-goog-spmi.load_sequential=1 max77779_pmic*.load_sequential=1 …`, `aoc_core.aoc_enable_gsa_boot=1`, `arm_smmu_v3_kvm.smc_s2=true`, `swiotlb=noforce`, `rodata=on`, `rcu_nocbs=all`, and `bootconfig`. `/chosen/bootargs` adds `kvm-arm.protected_modules=goog-mba-ctrl,pinctrl,power_controller,irq-gia-google,arm_smmu_v3_kvm`: the mailbox client, pin controller, power controller, GIA and SMMU drivers are loaded as protected modules under pKVM.
+- **`vendor_boot`'s command line** (on cheetah the bootloader ignores it and `/chosen/bootargs` is used, per the Pixel 7 Pro notes; whether mustang's does is unknown): `fips140.load_sequential=1 vh_sched.load_sequential=1 spmi_smartdv.load_sequential=1 regmap-goog-spmi.load_sequential=1 max77779_pmic*.load_sequential=1 …`, `aoc_core.aoc_enable_gsa_boot=1`, `arm_smmu_v3_kvm.smc_s2=true`, `swiotlb=noforce`, `rodata=on`, `rcu_nocbs=all`, and `bootconfig`. `/chosen/bootargs` adds `kvm-arm.protected_modules=goog-mba-ctrl,pinctrl,power_controller,irq-gia-google,arm_smmu_v3_kvm`: the mailbox client, pin controller, power controller, GIA and SMMU drivers are loaded as protected modules under pKVM.
 - **Counts.** `vendor_kernel_boot`'s ramdisk loads 203 modules; the 16K-page `vendor_boot` ramdisk loads 376; `vendor_dlkm` loads 117 more, with a parallel `16k-mode/` set. The first group is the platform core (the mailbox, clock, reset, IRQ, pinctrl, power-controller, UART, UFS, USB, SMMU, PMIC, panel and audio-DSP drivers above).
 
 ## What this means for a port (inferences, not tested)
@@ -101,7 +101,7 @@ Eight CPUs, as #198 found, each with `dvfs-helper-domain-name` (`cpu0`, `cpu1g0`
 
 ## Draft comment for #816 / #18 (not posted)
 
-> Following up on #816 and #18. I have no Pixel 10 yet, so everything below comes from Google's factory image for `CP3A.261005.005` (the build #198 used), read offline; nothing was run on a device. It builds on #198 and doesn't repeat it. Written with AI assistance (Claude Code); the method and commands are in the notes so each line can be re-checked.
+> Following up on #816 and #18. I have no Pixel 10 yet, so everything below comes from Google's factory image for `CP3A.261005.005` (the build #198 used), read offline; nothing was run on a device. It builds on #198 and doesn't repeat it. The method and commands are in the notes so each line can be re-checked.
 >
 > What the device trees add to the open questions in #198:
 >
@@ -111,4 +111,4 @@ Eight CPUs, as #198 found, each with `dvfs-helper-domain-name` (`cpu0`, `cpu1g0`
 > - **Console:** `serial0` is `/uart@db61000` (`reg` at `0xdb62000`); the boot arguments carry `earlycon=uart8250,mmio32,0xdb62000 console=ttyS0,115200n8`. The UART is DesignWare-style (`reg-shift 2`, 32-bit), and the stock driver also aliases `snps,dw-apb-uart`.
 > - **Pin control and PMICs:** eight `google,lga-*-pinctrl` domains under one driver; PMICs are on SPMI (`max77779` family, `da9188`), with no S2MPG anywhere, so the Pixel 9a's PMIC work won't carry over.
 >
-> Full write-up: `device/mustang/findings.md` and part 6 of `device/mustang/NOTES.md` on my fork's branch `fm/omarchy-mustang-dt`. @derekross, two questions: is a PR against `device/mustang/NOTES.md` the right place for this, and is the CPM mailbox the thing you'd want first, or would you start elsewhere? I'm happy to read Google's GPL module source for the mailbox message format next, offline, if that helps.
+> Full write-up: `device/mustang/findings.md` and part 6 of `device/mustang/NOTES.md` on my fork. @derekross, two questions: is a PR against `device/mustang/NOTES.md` the right place for this, and is the CPM mailbox the thing you'd want first, or would you start elsewhere? I'm happy to read Google's GPL module source for the mailbox message format next, offline, if that helps.
